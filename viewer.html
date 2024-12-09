@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Viewer</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Three.js and VRButton from a CDN -->
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.154.0/build/three.module.js';
+    import { VRButton } from 'https://unpkg.com/three@0.154.0/examples/jsm/webxr/VRButton.js';
+
+    let camera, scene, renderer;
+    let sphere;
+    
+    // Basic parameters:
+    const PANO_FOLDER = 'example_pano'; // hardcoding a panorama for now
+
+    document.addEventListener('DOMContentLoaded', init);
+
+    async function init() {
+      const container = document.body;
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x101010);
+
+      // Lighting
+      const light = new THREE.AmbientLight(0xffffff, 3);
+      scene.add(light);
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 1, 2000);
+      scene.add(camera);
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      renderer.xr.setReferenceSpaceType('local');
+      container.appendChild(renderer.domElement);
+      document.body.appendChild(VRButton.createButton(renderer));
+
+      window.addEventListener('resize', onWindowResize);
+
+      await loadPanorama(PANO_FOLDER);
+
+      renderer.setAnimationLoop(animate);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      renderer.render(scene, camera);
+    }
+
+    async function loadPanorama(panorama) {
+      // Fetch config
+      const configResponse = await fetch(`./panoramas/${panorama}/config.json`);
+      const config = await configResponse.json();
+
+      // Create Sphere Geometry
+      const panoSphereGeo = new THREE.SphereGeometry(config.sphereSize, config.meshResolution, config.meshResolution);
+      const panoSphereMat = new THREE.MeshStandardMaterial({ side: THREE.BackSide, displacementScale: config.depthScale });
+
+      sphere = new THREE.Mesh(panoSphereGeo, panoSphereMat);
+      scene.add(sphere);
+
+      // Load texture
+      const textureLoader = new THREE.TextureLoader();
+      const texture = await textureLoader.loadAsync(`./panoramas/${panorama}/image.png`);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = THREE.NearestFilter;
+      panoSphereMat.map = texture;
+
+      // If you have a depth map:
+      try {
+        const depth = await textureLoader.loadAsync(`./panoramas/${panorama}/depth.png`);
+        depth.minFilter = THREE.NearestFilter;
+        panoSphereMat.displacementMap = depth;
+      } catch (e) {
+        console.log('No depth map found, proceeding without displacement.');
+      }
+
+      panoSphereMat.needsUpdate = true;
+    }
+  </script>
+</head>
+<body>
+</body>
+</html>
