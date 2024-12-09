@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Generate a Panorama</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=no">
+</head>
+<body>
+  <h1>Generate a Panorama</h1>
+  <input type="text" id="prompt" placeholder="Enter your prompt">
+  <button id="submitPromptBtn">Generate</button>
+  <p id="status"></p>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+    import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+    const firebaseConfig = { /* same as before */ };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    let userUID = null;
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        userUID = user.uid;
+        const userDoc = await getDoc(doc(db, 'users', userUID));
+        const data = userDoc.data();
+        if (data.free_generations <= 0) {
+          document.getElementById('status').innerText = 'No free generations left.';
+          document.getElementById('submitPromptBtn').disabled = true;
+        }
+      } else {
+        window.location.href = '/login.html';
+      }
+    });
+
+    document.getElementById('submitPromptBtn').addEventListener('click', async () => {
+      const prompt = document.getElementById('prompt').value;
+      document.getElementById('status').innerText = 'Generating...';
+
+      // Call the serverless function to run the workflow on RunPod
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, uid: userUID })
+      });
+      const result = await res.json();
+      if (res.ok) {
+        // Wait or poll for result?
+        // For now, just show success and maybe a link to the new panorama
+        document.getElementById('status').innerText = 'Generation complete! ' + JSON.stringify(result);
+        // Decrement free_gens in Firestore:
+        const userRef = doc(db, 'users', userUID);
+        const userDoc = await getDoc(userRef);
+        const data = userDoc.data();
+        await updateDoc(userRef, { free_generations: data.free_generations - 1 });
+      } else {
+        document.getElementById('status').innerText = 'Error generating panorama.';
+      }
+    });
+  </script>
+</body>
+</html>
